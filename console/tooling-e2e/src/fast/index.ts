@@ -1,9 +1,9 @@
 import { agentIdentity } from "./agent-identity.ts";
 import { attachmentNames } from "./attachments.ts";
 import { clientMistakes } from "./client-mistakes.ts";
+import { consoleChatRoundtrip } from "./console-chat-roundtrip.ts";
 import { followUps } from "./follow-ups.ts";
 import { addressedDelivery, unaddressedHistory } from "./agent-messaging.ts";
-import { mattermostRoundtrip } from "./mattermost-roundtrip.ts";
 import { operationsFrontDoor } from "./operations.ts";
 import { organizationMembers } from "./organization-members.ts";
 import { organizations } from "./organizations.ts";
@@ -16,7 +16,7 @@ export const FAST_SCENARIOS: readonly FastScenario[] = [
   addressedDelivery,
   unaddressedHistory,
   operationsFrontDoor,
-  mattermostRoundtrip,
+  consoleChatRoundtrip,
   agentIdentity,
   roomGroupPaths,
   attachmentNames,
