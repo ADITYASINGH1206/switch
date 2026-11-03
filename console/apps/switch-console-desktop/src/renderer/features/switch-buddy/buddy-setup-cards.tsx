@@ -83,6 +83,8 @@ const Cards = observer(function Cards({
   const [reopened, setReopened] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [notConnected, setNotConnected] = useState<BuddyPlatform | null>(null);
+  const [chosenBridgeId, setChosenBridgeId] = useState<string | null>(null);
 
   const bridgesQuery = useQuery({
     queryKey: ['remote-bridges', workspaceId],
@@ -113,6 +115,10 @@ const Cards = observer(function Cards({
     resumes,
     failed: bridgesQuery.isError || ids.error != null,
   });
+  const createBridge =
+    step.kind === 'create'
+      ? (resumeBridges.find((bridge) => bridge.id === chosenBridgeId) ?? step.bridge)
+      : null;
   const retry = () => {
     void bridgesQuery.refetch();
     ids.refresh();
@@ -248,11 +254,29 @@ const Cards = observer(function Cards({
           title={`Connect ${label}`}
           description={`Add ${label} to your Switch workspace.`}
           footer={
-            <Button
-              onClick={() => showConnect({ serverId, platform: step.platform, onClosed: retry })}
-            >
-              Connect {label}
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => {
+                  setNotConnected(null);
+                  showConnect({
+                    serverId,
+                    platform: step.platform,
+                    // Said only once the re-read is in, so a connection just made never flashes it.
+                    onClosed: () => {
+                      ids.refresh();
+                      void bridgesQuery.refetch().then(() => setNotConnected(step.platform));
+                    },
+                  });
+                }}
+              >
+                Connect {label}
+              </Button>
+              {notConnected === step.platform && (
+                <span className="text-sm text-foreground-muted">
+                  {label} isn’t connected yet. Try again when you’re ready.
+                </span>
+              )}
+            </div>
           }
         />
       )}
@@ -304,21 +328,47 @@ const Cards = observer(function Cards({
             description="I’ll create a private channel just for us and continue there."
             error={createError}
             footer={
-              <Button disabled={creating} onClick={() => void create(step.bridge)}>
-                {creating ? (
-                  <>
-                    <Spinner size="sm" />
-                    Creating channel…
-                  </>
-                ) : createError ? (
-                  'Try again'
-                ) : (
-                  <>
-                    Create channel and continue
-                    <ArrowRight />
-                  </>
+              <div className="flex flex-col items-start gap-3">
+                {resumeBridges.length > 1 && (
+                  <div
+                    role="group"
+                    aria-label="Slack workspace"
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="text-foreground-muted">Which workspace?</span>
+                    {resumeBridges.map((linked) => (
+                      <Button
+                        key={linked.id}
+                        size="sm"
+                        variant={linked.id === createBridge?.id ? 'default' : 'outline'}
+                        aria-pressed={linked.id === createBridge?.id}
+                        disabled={creating}
+                        onClick={() => setChosenBridgeId(linked.id)}
+                      >
+                        {linked.displayName}
+                      </Button>
+                    ))}
+                  </div>
                 )}
-              </Button>
+                <Button
+                  disabled={creating}
+                  onClick={() => void create(createBridge ?? step.bridge)}
+                >
+                  {creating ? (
+                    <>
+                      <Spinner size="sm" />
+                      Creating channel…
+                    </>
+                  ) : createError ? (
+                    'Try again'
+                  ) : (
+                    <>
+                      Create channel and continue
+                      <ArrowRight />
+                    </>
+                  )}
+                </Button>
+              </div>
             }
           />
         </>
