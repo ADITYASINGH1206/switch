@@ -106,7 +106,12 @@ const Cards = observer(function Cards({
     if (query.isError) resumes[bridge.id] = 'failed';
     else if (query.isSuccess) resumes[bridge.id] = query.data;
   });
-  const platform = buddyPlatform(picked, bridgesQuery.data ?? null);
+  // With nothing picked, open on the app a hand-off was already made in.
+  const handedOff = resumeBridges.find((bridge) => {
+    const resume = resumes[bridge.id];
+    return resume != null && resume !== 'failed';
+  })?.type as BuddyPlatform | undefined;
+  const platform = buddyPlatform(picked ?? handedOff ?? null, bridgesQuery.data ?? null);
   const label = platform ? PLATFORM_NAMES[platform] : '';
   const platformBridges = resumeBridges.filter((bridge) => bridge.type === platform);
   const step = buddySetupStep({
