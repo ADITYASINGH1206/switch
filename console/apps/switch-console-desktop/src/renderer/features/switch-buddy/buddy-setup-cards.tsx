@@ -125,6 +125,14 @@ const Cards = observer(function Cards({
     step.kind === 'create'
       ? (platformBridges.find((bridge) => bridge.id === chosenBridgeId) ?? step.bridge)
       : null;
+  // Before any is linked, every connected one of the app is a choice; the one chosen stays chosen for create.
+  const connectedBridges = (bridgesQuery.data ?? []).filter(
+    (bridge) => bridge.type === platform && bridge.status === 'active'
+  );
+  const linkBridge =
+    step.kind === 'link'
+      ? (connectedBridges.find((bridge) => bridge.id === chosenBridgeId) ?? step.bridge)
+      : null;
   const retry = () => {
     void bridgesQuery.refetch();
     ids.refresh();
@@ -272,7 +280,7 @@ const Cards = observer(function Cards({
         />
       )}
 
-      {step.kind === 'link' && (
+      {step.kind === 'link' && linkBridge && (
         <>
           <div className="flex items-center gap-2 text-sm text-foreground-success">
             <CheckCircle2 className="size-4" />
@@ -285,19 +293,28 @@ const Cards = observer(function Cards({
               // The bot can find only people who have written where it can hear them, and
               // privacy mode lets it hear only slash commands.
               step.bridge.type === 'telegram'
-                ? `I answer only accounts I recognise. Make a Telegram group with just you and the ${step.bridge.displayName} bot, and send this in it. Then link your account here: Switch shows a code to send in that group, and once it’s in, I’ll answer you there.`
-                : `So I recognise you in ${step.bridge.displayName}.`
+                ? `I answer only accounts I recognise. Make a Telegram group with just you and the ${linkBridge.displayName} bot, and send this in it. Then link your account here: Switch shows a code to send in that group, and once it’s in, I’ll answer you there.`
+                : `So I recognise you in ${linkBridge.displayName}.`
             }
             footer={
-              <div className="flex flex-wrap items-center gap-3">
-                {step.bridge.type === 'telegram' && (
-                  <InviteCommand platform="telegram" agentName={agentName} />
-                )}
-                <Button
-                  onClick={() => showClaimIdentity({ workspaceId, bridgeId: step.bridge.id })}
-                >
-                  Link account
-                </Button>
+              <div className="flex flex-col items-start gap-3">
+                <BridgeChoice
+                  platform={step.bridge.type}
+                  bridges={connectedBridges}
+                  chosenId={linkBridge.id}
+                  disabled={false}
+                  onChoose={setChosenBridgeId}
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  {step.bridge.type === 'telegram' && (
+                    <InviteCommand platform="telegram" agentName={agentName} />
+                  )}
+                  <Button
+                    onClick={() => showClaimIdentity({ workspaceId, bridgeId: linkBridge.id })}
+                  >
+                    Link account
+                  </Button>
+                </div>
               </div>
             }
           />
@@ -321,29 +338,13 @@ const Cards = observer(function Cards({
             error={createError}
             footer={
               <div className="flex flex-col items-start gap-3">
-                {platformBridges.length > 1 && (
-                  <div
-                    role="group"
-                    aria-label={`${label} ${platform === 'discord' ? 'server' : 'workspace'}`}
-                    className="flex flex-wrap items-center gap-2 text-sm"
-                  >
-                    <span className="text-foreground-muted">
-                      {platform === 'discord' ? 'Which server?' : 'Which workspace?'}
-                    </span>
-                    {platformBridges.map((linked) => (
-                      <Button
-                        key={linked.id}
-                        size="sm"
-                        variant={linked.id === createBridge?.id ? 'default' : 'outline'}
-                        aria-pressed={linked.id === createBridge?.id}
-                        disabled={creating}
-                        onClick={() => setChosenBridgeId(linked.id)}
-                      >
-                        {linked.displayName}
-                      </Button>
-                    ))}
-                  </div>
-                )}
+                <BridgeChoice
+                  platform={step.bridge.type}
+                  bridges={platformBridges}
+                  chosenId={createBridge?.id ?? step.bridge.id}
+                  disabled={creating}
+                  onChoose={setChosenBridgeId}
+                />
                 <Button
                   disabled={creating}
                   onClick={() => void create(createBridge ?? step.bridge)}
@@ -440,6 +441,46 @@ const TILES = [
   { bridgeType: 'discord', name: 'Discord', subtitle: 'Servers & channels' },
   { bridgeType: 'telegram', name: 'Telegram', subtitle: 'Groups & chats' },
 ] as const;
+
+/** Which of the app's connections, when there is more than one to choose from. */
+function BridgeChoice({
+  platform,
+  bridges,
+  chosenId,
+  disabled,
+  onChoose,
+}: {
+  platform: string;
+  bridges: RemoteBridge[];
+  chosenId: string;
+  disabled: boolean;
+  onChoose: (bridgeId: string) => void;
+}) {
+  if (bridges.length < 2) return null;
+  const label = PLATFORM_NAMES[platform as BuddyPlatform];
+  const unit = platform === 'discord' ? 'server' : 'workspace';
+  return (
+    <div
+      role="group"
+      aria-label={`${label} ${unit}`}
+      className="flex flex-wrap items-center gap-2 text-sm"
+    >
+      <span className="text-foreground-muted">Which {unit}?</span>
+      {bridges.map((bridge) => (
+        <Button
+          key={bridge.id}
+          size="sm"
+          variant={bridge.id === chosenId ? 'default' : 'outline'}
+          aria-pressed={bridge.id === chosenId}
+          disabled={disabled}
+          onClick={() => onChoose(bridge.id)}
+        >
+          {bridge.displayName}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 function TileText({ name, subtitle }: { name: string; subtitle: string }) {
   return (

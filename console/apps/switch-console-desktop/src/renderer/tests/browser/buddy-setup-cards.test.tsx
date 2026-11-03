@@ -17,7 +17,9 @@ const listMyIdentities = vi.hoisted(() => vi.fn());
 const getRoomDetail = vi.hoisted(() => vi.fn());
 const createChat = vi.hoisted(() => vi.fn());
 const openRoomChannel = vi.hoisted(() => vi.fn());
-const shown = vi.hoisted(() => [] as { id: string; args: { onClosed?: () => void } }[]);
+const shown = vi.hoisted(
+  () => [] as { id: string; args: { onClosed?: () => void; bridgeId?: string } }[]
+);
 const listBridgeTypes = vi.hoisted(() => vi.fn());
 const listMessagingApps = vi.hoisted(() => vi.fn());
 const administersWorkspaceInScope = vi.hoisted(() => vi.fn());
@@ -51,7 +53,8 @@ vi.mock('@renderer/lib/ipc', () => ({
 }));
 vi.mock('@renderer/lib/modal/modal-provider', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useShowModal: (id: string) => (args: { onClosed?: () => void }) => shown.push({ id, args }),
+  useShowModal: (id: string) => (args: { onClosed?: () => void; bridgeId?: string }) =>
+    shown.push({ id, args }),
 }));
 vi.mock('@renderer/features/chats/stores/chats', () => ({
   chatsStore: {
@@ -128,6 +131,7 @@ const handoffCalls = () =>
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
+let client: QueryClient;
 
 beforeEach(async () => {
   made = new Set();
@@ -172,7 +176,7 @@ async function render(): Promise<HTMLElement> {
   container.style.padding = '16px';
   document.body.appendChild(container);
   root = createRoot(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   await act(async () =>
     root!.render(
       <QueryClientProvider client={client}>
@@ -400,6 +404,42 @@ describe('switch-buddy setup cards', () => {
     ]);
     expect(el.textContent).toContain('#buddy-ada ready');
     expect(getRoomDetail).toHaveBeenCalledWith({ workspaceId: 'ws-1', roomId: 'room-b-2' });
+  });
+
+  it('(h) several workspaces, none linked: links the one chosen, then hands off there', async () => {
+    listBridges.mockResolvedValue([acme, globex]);
+    const el = await render();
+
+    expect(el.textContent).toContain('Which workspace?');
+    expect(button(el, 'Acme Slack').getAttribute('aria-pressed')).toBe('true');
+    await click(el, 'Globex Slack');
+    expect(button(el, 'Globex Slack').getAttribute('aria-pressed')).toBe('true');
+    expect(el.textContent).toContain('So I recognise you in Globex Slack.');
+    await shot(el, 'h2-choose-workspace-before-link');
+
+    await click(el, 'Link account');
+    expect(shown.at(-1)).toMatchObject({ id: 'claimIdentityModal', args: { bridgeId: 'b-2' } });
+
+    listMyIdentities.mockResolvedValue([linked('b-2')]);
+    await act(async () => client.invalidateQueries({ queryKey: ['my-switch-identities', 'ws-1'] }));
+    await settle();
+    await click(el, 'Create channel and continue');
+
+    expect(handoffCalls()).toEqual([expect.objectContaining({ bridgeId: 'b-2' })]);
+  });
+
+  it('(h) a choice made before linking stays chosen once both are linked', async () => {
+    listBridges.mockResolvedValue([acme, globex]);
+    const el = await render();
+    await click(el, 'Globex Slack');
+
+    listMyIdentities.mockResolvedValue([linked('b-1'), linked('b-2')]);
+    await act(async () => client.invalidateQueries({ queryKey: ['my-switch-identities', 'ws-1'] }));
+    await settle();
+
+    expect(button(el, 'Globex Slack').getAttribute('aria-pressed')).toBe('true');
+    await click(el, 'Create channel and continue');
+    expect(handoffCalls()).toEqual([expect.objectContaining({ bridgeId: 'b-2' })]);
   });
 
   it('(i) invite or post failure: Try again, then done', async () => {
