@@ -98,6 +98,7 @@ const acme = bridge('b-1', 'slack', 'Acme Slack');
 const globex = bridge('b-2', 'slack', 'Globex Slack');
 const teams = bridge('b-3', 'teams', 'Acme Teams');
 const telegram = bridge('b-4', 'telegram', 'example_bot');
+const discord = bridge('b-5', 'discord', 'Acme Discord');
 const linked = (bridgeId: string) => ({ bridgeId }) as LinkedIdentity;
 
 const noSuchOperation = () =>
@@ -466,5 +467,32 @@ describe('switch-buddy setup cards', () => {
     expect(el.textContent).toContain('Continue in Telegram');
     expect(el.textContent).toContain('/invite_agent @switch-buddy');
     await shot(el, 'x-telegram-guide');
+  });
+
+  it('(o) Discord linked: continues in a private Discord channel, then opens it', async () => {
+    listBridges.mockResolvedValue([discord]);
+    listMyIdentities.mockResolvedValue([linked('b-5')]);
+    getRoomDetail.mockResolvedValue({
+      linkedChannelName: '#dm-ada-switch-buddy',
+      externalChannelUrl: 'https://discord.com/channels/1/2',
+    });
+    const el = await render();
+
+    expect(el.textContent).toContain('Discord connected · account linked');
+    expect(el.textContent).toContain('Continue in a private Discord channel');
+    await shot(el, 'x-discord-create');
+
+    await click(el, 'Create channel and continue');
+
+    expect(handoffCalls()).toEqual([
+      expect.objectContaining({ bridgeId: 'b-5', requestId: 'buddy-handoff:agent-1:b-5' }),
+    ]);
+    expect(el.textContent).toContain('#dm-ada-switch-buddy ready');
+    await click(el, 'Open Discord');
+    expect(openRoomChannel).toHaveBeenCalledWith({
+      serverId: 'srv-1',
+      channelUrl: 'https://discord.com/channels/1/2',
+    });
+    await shot(el, 'x-discord-done');
   });
 });

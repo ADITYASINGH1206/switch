@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSummary } from '@shared/core/chats/chats';
 import type { LinkedIdentity, RemoteBridge } from '@shared/core/switch-servers/switch-servers';
-import { buddyPlatform, buddySetupCardsEnabled, buddySetupStep } from './buddy-setup-step';
+import {
+  buddyPlatform,
+  buddyResumeBridges,
+  buddySetupCardsEnabled,
+  buddySetupStep,
+} from './buddy-setup-step';
 
 const slack = { id: 'b-1', type: 'slack', status: 'active' } as RemoteBridge;
 const slack2 = { id: 'b-2', type: 'slack', status: 'active' } as RemoteBridge;
@@ -17,6 +22,7 @@ const telegram = {
   status: 'active',
   directorySearchSupported: false,
 } as RemoteBridge;
+const discord = { id: 'b-5', type: 'discord', status: 'active' } as RemoteBridge;
 const linked = { bridgeId: 'b-1' } as LinkedIdentity;
 const linked2 = { bridgeId: 'b-2' } as LinkedIdentity;
 const handedOff = { roomId: 'r-2', channelType: 'direct', bridgeType: 'slack' } as ChatSummary;
@@ -128,6 +134,42 @@ describe('buddySetupStep', () => {
         identities: [{ bridgeId: 'b-4' } as LinkedIdentity],
       })
     ).toEqual({ kind: 'guide', bridge: telegram });
+  });
+  it('walks Discord to the same private channel hand-off as Slack, on its own connections only', () => {
+    const discordBase = { ...base, platform: 'discord' as const };
+    const linkedDiscord = { bridgeId: 'b-5' } as LinkedIdentity;
+    expect(buddySetupStep({ ...discordBase, bridges: [slack] })).toEqual({
+      kind: 'connect',
+      platform: 'discord',
+    });
+    expect(buddySetupStep({ ...discordBase, bridges: [slack, discord] })).toEqual({
+      kind: 'link',
+      bridge: discord,
+    });
+    expect(
+      buddySetupStep({
+        ...discordBase,
+        bridges: [slack, discord],
+        identities: [linked, linkedDiscord],
+        resumes: { 'b-1': handedOff, 'b-5': null },
+      })
+    ).toEqual({ kind: 'create', bridge: discord });
+  });
+});
+
+describe('buddyResumeBridges', () => {
+  it('is the linked, active Slack and Discord connections', () => {
+    expect(
+      buddyResumeBridges(
+        [slack, teams, discord, { ...slack2, status: 'error' }],
+        [
+          linked,
+          linked2,
+          { bridgeId: 'b-3' } as LinkedIdentity,
+          { bridgeId: 'b-5' } as LinkedIdentity,
+        ]
+      )
+    ).toEqual([slack, discord]);
   });
 });
 
