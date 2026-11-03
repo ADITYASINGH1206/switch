@@ -406,7 +406,7 @@ describe('switch-buddy setup cards', () => {
     expect(el.textContent).toContain('Private Slack channel ready');
     expect(el.textContent).toContain('Couldn’t get a link to the Slack channel. Find it in Slack.');
     expect(findButton(el, 'Open Slack')).toBeUndefined();
-    await shot(el, 'l-done-without-link');
+    await shot(el, 'x-done-without-link');
   });
 
   it('(m) Teams linked: guides adding the app and inviting the buddy', async () => {
@@ -416,7 +416,7 @@ describe('switch-buddy setup cards', () => {
 
     expect(el.textContent).toContain('Continue in Microsoft Teams');
     expect(el.textContent).toContain('!invite-agent @switch-buddy');
-    await shot(el, 'm-teams-guide');
+    await shot(el, 'x-teams-guide');
   });
 
   it('(n) Telegram linked: guides inviting the buddy in the group', async () => {
@@ -426,6 +426,6 @@ describe('switch-buddy setup cards', () => {
 
     expect(el.textContent).toContain('Continue in Telegram');
     expect(el.textContent).toContain('/invite_agent @switch-buddy');
-    await shot(el, 'n-telegram-guide');
+    await shot(el, 'x-telegram-guide');
   });
 });
