@@ -3,6 +3,8 @@ chats, against real Postgres."""
 
 from __future__ import annotations
 
+import uuid
+
 import httpx
 from sqlalchemy import func, select
 
@@ -25,20 +27,16 @@ from tests.switch_core.gateway.test_chats_routes import _code
 TENANT = "00000000-0000-0000-0000-000000000000"
 
 
-_bridge_counter = 0
-
-
 async def _slack(
     chats: _Harness, *, link: User | None, channel_creation_enabled: bool = True
 ) -> tuple[str, _FakeCore]:
     """A running Slack bridge on which `link`, if given, has claimed `U-ALICE`."""
-    global _bridge_counter
-    _bridge_counter += 1
-    bot_suffix = f"-{_bridge_counter}"
+    tag = uuid.uuid4().hex[:8]
+    bot_suffix = f"-{tag}"
     async with chats.factory() as session:
         bot = Client(
             transport_user_id=f"@slack-bot{bot_suffix}:switch.test",
-            display_name=f"Slack Bot {_bridge_counter}",
+            display_name=f"Slack Bot {tag}",
             type="bridge",
         )
         session.add(bot)
@@ -46,7 +44,7 @@ async def _slack(
         bridge = CollaborationBridge(
             tenant_id=TENANT,
             type="slack",
-            display_name=f"Acme Slack {_bridge_counter}",
+            display_name=f"Acme Slack {tag}",
             connection_config={},
             client_id=bot.id,
             status="active",
