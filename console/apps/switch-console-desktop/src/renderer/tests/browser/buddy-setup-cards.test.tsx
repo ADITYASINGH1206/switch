@@ -544,9 +544,8 @@ describe('switch-buddy setup cards', () => {
 
     expect(el.textContent).toContain('Continue in Telegram');
     expect(el.textContent).toContain('/invite_agent @switch-buddy');
-    expect(el.textContent).toContain(
-      'Then mention switch-buddy with a short note on what you work on.'
-    );
+    expect(el.textContent).toContain("reply to the bot's message");
+    expect(el.textContent).toContain('mention switch-buddy in that reply');
     expect(el.textContent).not.toContain('I’ll answer');
     await shot(el, 'x-telegram-guide');
   });
