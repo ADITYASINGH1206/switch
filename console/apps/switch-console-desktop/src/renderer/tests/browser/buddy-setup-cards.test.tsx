@@ -496,6 +496,10 @@ describe('switch-buddy setup cards', () => {
 
     expect(el.textContent).toContain('Continue in Microsoft Teams');
     expect(el.textContent).toContain('!invite-agent @switch-buddy');
+    expect(el.textContent).toContain(
+      'Then mention switch-buddy with a short note on what you work on.'
+    );
+    expect(el.textContent).not.toContain('I’ll answer');
     await shot(el, 'x-teams-guide');
   });
 
@@ -506,6 +510,10 @@ describe('switch-buddy setup cards', () => {
 
     expect(el.textContent).toContain('Continue in Telegram');
     expect(el.textContent).toContain('/invite_agent @switch-buddy');
+    expect(el.textContent).toContain(
+      'Then mention switch-buddy with a short note on what you work on.'
+    );
+    expect(el.textContent).not.toContain('I’ll answer');
     await shot(el, 'x-telegram-guide');
   });
 
@@ -534,5 +542,34 @@ describe('switch-buddy setup cards', () => {
       channelUrl: 'https://discord.com/channels/1/2',
     });
     await shot(el, 'x-discord-done');
+  });
+
+  it('(p) an auto-selected Slack whose resume read fails: says so, and Retry reads it again', async () => {
+    listBridges.mockResolvedValue([acme]);
+    listMyIdentities.mockResolvedValue([linked('b-1')]);
+    createChat.mockImplementationOnce(async () => {
+      throw new Error('down');
+    });
+    const el = await render();
+
+    expect(el.textContent).toContain('Couldn’t check Slack');
+    await shot(el, 'x-auto-check-failed');
+    await click(el, 'Retry');
+
+    expect(createChat).toHaveBeenCalledTimes(2);
+    expect(el.textContent).not.toContain('Couldn’t check');
+    expect(findButton(el, 'Create channel and continue')).toBeDefined();
+  });
+
+  it('(q) a failed first read of the chat apps: says so, and Retry reads them again', async () => {
+    listBridges.mockReset().mockRejectedValueOnce(new Error('down')).mockResolvedValue([]);
+    const el = await render();
+
+    expect(el.textContent).toContain('Couldn’t check your chat apps');
+    await shot(el, 'x-apps-check-failed');
+    await click(el, 'Retry');
+
+    expect(listBridges).toHaveBeenCalledTimes(2);
+    expect(el.textContent).not.toContain('Couldn’t check');
   });
 });
