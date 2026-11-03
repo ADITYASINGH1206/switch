@@ -72,10 +72,10 @@ class _FakeCore:
     def add_room_mapping(self, *args: Any) -> None:
         return None
 
-    async def ensure_users_in_room(
-        self, room_id: str, transport_room_id: str, user_names: list[str]
+    async def ensure_external_users_in_room(
+        self, room_id: str, transport_room_id: str, external_user_ids: list[str]
     ) -> None:
-        self.users_added.append(user_names)
+        self.users_added.append(external_user_ids)
 
 
 class _FakeCollabLifecycle:
@@ -175,6 +175,22 @@ async def test_a_bridged_chat_opens_a_dm_with_the_callers_linked_account(
         assert room is not None
         assert room.bridge_id == bridge_id
         assert room.external_channel_id == "C-DM-1"
+
+
+async def test_the_linked_account_is_used_even_when_another_shares_its_name(
+    chats: _Harness,
+) -> None:
+    """After a rename, another cached account on the bridge can hold the
+    linked one's old handle; the hand-off must still reach the linked one."""
+    agent = await chats.agent("helper", owner=chats.alice)
+    bridge_id, core = await _slack(chats, link=chats.alice)
+    core._known = {"alice.s": "U-OTHER"}
+
+    response = await _create(chats, [agent], bridge_id)
+
+    assert response.status_code == 200, response.text
+    assert [call["user_external_id"] for call in core.dm_calls] == ["U-ALICE"]
+    assert core.users_added == [["U-ALICE"]]
 
 
 async def test_a_retry_returns_the_same_chat_and_opens_one_channel(
@@ -344,7 +360,7 @@ async def test_a_retry_after_a_failed_bridge_invite_puts_the_bridge_in(
     room = await _create_on(chats, chats.service, agent, bridge_id)
 
     assert bridge_invites == [room.transport_room_id]
-    assert core.users_added == [["alice.s"]]
+    assert core.users_added == [["U-ALICE"]]
     assert len(core.dm_calls) == 1
 
 

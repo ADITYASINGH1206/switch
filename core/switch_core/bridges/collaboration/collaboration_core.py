@@ -1777,7 +1777,19 @@ class CollaborationCore:
         (the resolver logs them); the on_user_joined callback or the inbound
         message path picks them up later."""
         resolved = await self.resolve_external_user_id_map(user_names)
-        for ext_id in resolved.values():
+        await self.ensure_external_users_in_room(
+            room_id, transport_room_id, list(resolved.values())
+        )
+
+    async def ensure_external_users_in_room(
+        self,
+        room_id: str,
+        transport_room_id: str,
+        external_user_ids: list[str],
+    ) -> None:
+        """`ensure_users_in_room` for accounts already known by id, as for a
+        linked identity: no name is resolved, since two accounts can share one."""
+        for ext_id in external_user_ids:
             async with self._session_factory() as session:
                 ext_user = await self._external_user_store.get_by_external_id(
                     session, self._bridge_id, ext_id

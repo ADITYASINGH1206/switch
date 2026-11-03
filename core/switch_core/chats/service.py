@@ -1473,8 +1473,8 @@ class ChatService:
                         "NOT_AGENT_OWNER",
                         "Only the agent's owner can give it a greeting.",
                     )
-                user_names = (
-                    [await self._linked_username(session, user.id, bridge_id)]
+                linked = (
+                    await self._linked_account(session, user.id, bridge_id)
                     if bridge_id is not None
                     else None
                 )
@@ -1524,7 +1524,8 @@ class ChatService:
                                 channel_type="direct" if direct else "channel_private",
                                 internal_only=bridge_id is None,
                                 bridge_id=bridge_id,
-                                user_names=user_names,
+                                user_names=[linked[0]] if linked else None,
+                                user_external_id=linked[1] if linked else None,
                                 created_by=user.id,
                                 owner_id=user.id,
                                 read_visibility="private",
@@ -1544,7 +1545,9 @@ class ChatService:
                     room = created.room
                 else:
                     room = found
-                    await self._room_service.reconcile_room(room, user_names)
+                    await self._room_service.reconcile_room(
+                        room, [linked[1]] if linked else []
+                    )
             for joiner in [user, *members]:
                 client = await self.member_actor(tenant_id, joiner)
                 await self._join(tenant_id, room, client)
@@ -1584,11 +1587,11 @@ class ChatService:
                 await session.execute(select(func.pg_advisory_unlock(key)))
 
     @staticmethod
-    async def _linked_username(
+    async def _linked_account(
         session: AsyncSession, user_id: str, bridge_id: str
-    ) -> str:
-        """The user's own account name on the bridge, from the identity they
-        linked there; never one the client names."""
+    ) -> tuple[str, str]:
+        """The user's own account on the bridge as (username, external user
+        id), from the identity they linked there; never one the client names."""
         bridge = await session.get(CollaborationBridge, bridge_id)
         if bridge is None or bridge.tenant_id != require_tenant_id():
             raise ChatError(404, "BRIDGE_NOT_FOUND", "No such bridge.")
@@ -1605,7 +1608,7 @@ class ChatService:
                 f"{bridge.display_name}. Link it in your Switch settings, then "
                 "try again.",
             )
-        return linked[0].external_username
+        return linked[0].external_username, linked[0].external_user_id
 
     async def _room_of_operation(
         self, session: AsyncSession, operation_id: str
