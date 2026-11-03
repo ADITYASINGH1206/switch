@@ -54,11 +54,39 @@ export function buddyPlatform(
 }
 
 /**
- * Where the person is in moving their buddy to their chat app, from live reads. A read
- * not in yet is `loading`; one that failed is `unknown`, never "not connected".
+ * The connection of the app the cards are on: the one chosen, else the one a
+ * hand-off was made on, else a linked one, else the first connected.
+ */
+export function buddyBridge(
+  platform: BuddyPlatform,
+  bridges: RemoteBridge[] | null,
+  identities: LinkedIdentity[] | null,
+  resumes: Partial<Record<string, BuddyResume>>,
+  chosenId: string | null
+): RemoteBridge | undefined {
+  const active = (bridges ?? []).filter(
+    (bridge) => bridge.type === platform && bridge.status === 'active'
+  );
+  return (
+    active.find((bridge) => bridge.id === chosenId) ??
+    active.find((bridge) => isChat(resumes[bridge.id])) ??
+    active.find((bridge) => identities?.some((identity) => identity.bridgeId === bridge.id)) ??
+    active[0]
+  );
+}
+
+function isChat(resume: BuddyResume | undefined): resume is ChatSummary {
+  return typeof resume === 'object' && resume !== null;
+}
+
+/**
+ * Where the person is in moving their buddy to their chat app, from live reads,
+ * on one connection of it (see `buddyBridge`). A read not in yet is `loading`;
+ * one that failed is `unknown`, never "not connected".
  * Done only when resuming the hand-off on a connection, which never makes one,
  * found its chat: a chat with the buddy made by hand is not a hand-off.
- * `resumes` is by bridge id, a bridge missing still being resumed.
+ * `resumes` is by bridge id, a bridge missing still being resumed. With no
+ * connection chosen, every resume is waited for, so one already handed off wins.
  *
  * Only Slack and Discord get a channel made for them: elsewhere, once linked, they are
  * told how to bring the buddy into a chat themselves. Every platform waits for
@@ -70,39 +98,34 @@ export function buddySetupStep({
   bridges,
   identities,
   resumes,
+  chosenBridgeId,
   failed,
 }: {
   platform: BuddyPlatform | null;
   bridges: RemoteBridge[] | null;
   identities: LinkedIdentity[] | null;
   resumes: Partial<Record<string, BuddyResume>>;
+  chosenBridgeId: string | null;
   failed: boolean;
 }): BuddySetupStep {
   if (failed) return { kind: 'unknown' };
   if (!bridges) return { kind: 'loading' };
   if (!platform) return { kind: 'choose' };
-  const first = activeBridge(bridges, platform);
-  if (!first) return { kind: 'connect', platform };
+  const bridge = buddyBridge(platform, bridges, identities, resumes, chosenBridgeId);
+  if (!bridge) return { kind: 'connect', platform };
   if (!identities) return { kind: 'loading' };
-  if (!CHANNEL_PLATFORMS.includes(platform)) {
-    const ready = bridges.find(
-      (bridge) =>
-        bridge.type === platform &&
-        bridge.status === 'active' &&
-        identities.some((identity) => identity.bridgeId === bridge.id)
-    );
-    return ready ? { kind: 'guide', bridge: ready } : { kind: 'link', bridge: first };
+  if (!identities.some((identity) => identity.bridgeId === bridge.id))
+    return { kind: 'link', bridge };
+  if (!CHANNEL_PLATFORMS.includes(platform)) return { kind: 'guide', bridge };
+  if (bridge.id !== chosenBridgeId && !isChat(resumes[bridge.id])) {
+    const results = buddyResumeBridges(bridges, identities)
+      .filter((linked) => linked.type === platform)
+      .map((linked) => resumes[linked.id]);
+    if (results.includes('failed')) return { kind: 'unknown' };
+    if (results.includes(undefined)) return { kind: 'resuming' };
   }
-  const linked = buddyResumeBridges(bridges, identities).filter(
-    (bridge) => bridge.type === platform
-  );
-  if (linked.length === 0) return { kind: 'link', bridge: first };
-  const results = linked.map((bridge) => resumes[bridge.id]);
-  const chat = results.find(
-    (result): result is ChatSummary => typeof result === 'object' && result !== null
-  );
-  if (chat) return { kind: 'done', chat };
-  if (results.includes('failed')) return { kind: 'unknown' };
-  if (results.includes(undefined)) return { kind: 'resuming' };
-  return { kind: 'create', bridge: linked[0] };
+  const resume = resumes[bridge.id];
+  if (resume === 'failed') return { kind: 'unknown' };
+  if (resume === undefined) return { kind: 'resuming' };
+  return isChat(resume) ? { kind: 'done', chat: resume } : { kind: 'create', bridge };
 }

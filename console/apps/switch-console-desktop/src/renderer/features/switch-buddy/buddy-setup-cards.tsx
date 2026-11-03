@@ -113,26 +113,18 @@ const Cards = observer(function Cards({
   })?.type as BuddyPlatform | undefined;
   const platform = buddyPlatform(picked ?? handedOff ?? null, bridgesQuery.data ?? null);
   const label = platform ? PLATFORM_NAMES[platform] : '';
-  const platformBridges = resumeBridges.filter((bridge) => bridge.type === platform);
   const step = buddySetupStep({
     platform,
     bridges: bridgesQuery.data ?? null,
     identities: ids.identities,
     resumes,
+    chosenBridgeId,
     failed: bridgesQuery.isError || ids.error != null,
   });
-  const createBridge =
-    step.kind === 'create'
-      ? (platformBridges.find((bridge) => bridge.id === chosenBridgeId) ?? step.bridge)
-      : null;
-  // Before any is linked, every connected one of the app is a choice; the one chosen stays chosen for create.
+  // Every connected one of the app is a choice, linked or not; the cards follow the one chosen.
   const connectedBridges = (bridgesQuery.data ?? []).filter(
     (bridge) => bridge.type === platform && bridge.status === 'active'
   );
-  const linkBridge =
-    step.kind === 'link'
-      ? (connectedBridges.find((bridge) => bridge.id === chosenBridgeId) ?? step.bridge)
-      : null;
   const retry = () => {
     void bridgesQuery.refetch();
     ids.refresh();
@@ -280,7 +272,7 @@ const Cards = observer(function Cards({
         />
       )}
 
-      {step.kind === 'link' && linkBridge && (
+      {step.kind === 'link' && (
         <>
           <div className="flex items-center gap-2 text-sm text-foreground-success">
             <CheckCircle2 className="size-4" />
@@ -293,15 +285,15 @@ const Cards = observer(function Cards({
               // The bot can find only people who have written where it can hear them, and
               // privacy mode lets it hear only slash commands.
               step.bridge.type === 'telegram'
-                ? `I answer only accounts I recognise. Make a Telegram group with just you and the ${linkBridge.displayName} bot, and send this in it. Then link your account here: Switch shows a code to send in that group, and once it’s in, I’ll answer you there.`
-                : `So I recognise you in ${linkBridge.displayName}.`
+                ? `I answer only accounts I recognise. Make a Telegram group with just you and the ${step.bridge.displayName} bot, and send this in it. Then link your account here: Switch shows a code to send in that group, and once it’s in, I’ll answer you there.`
+                : `So I recognise you in ${step.bridge.displayName}.`
             }
             footer={
               <div className="flex flex-col items-start gap-3">
                 <BridgeChoice
                   platform={step.bridge.type}
                   bridges={connectedBridges}
-                  chosenId={linkBridge.id}
+                  chosenId={step.bridge.id}
                   disabled={false}
                   onChoose={setChosenBridgeId}
                 />
@@ -310,7 +302,7 @@ const Cards = observer(function Cards({
                     <InviteCommand platform="telegram" agentName={agentName} />
                   )}
                   <Button
-                    onClick={() => showClaimIdentity({ workspaceId, bridgeId: linkBridge.id })}
+                    onClick={() => showClaimIdentity({ workspaceId, bridgeId: step.bridge.id })}
                   >
                     Link account
                   </Button>
@@ -340,15 +332,12 @@ const Cards = observer(function Cards({
               <div className="flex flex-col items-start gap-3">
                 <BridgeChoice
                   platform={step.bridge.type}
-                  bridges={platformBridges}
-                  chosenId={createBridge?.id ?? step.bridge.id}
+                  bridges={connectedBridges}
+                  chosenId={step.bridge.id}
                   disabled={creating}
                   onChoose={setChosenBridgeId}
                 />
-                <Button
-                  disabled={creating}
-                  onClick={() => void create(createBridge ?? step.bridge)}
-                >
+                <Button disabled={creating} onClick={() => void create(step.bridge)}>
                   {creating ? (
                     <>
                       <Spinner size="sm" />
@@ -386,7 +375,18 @@ const Cards = observer(function Cards({
                 ? `In a Telegram group with you and the ${step.bridge.displayName} bot, send this if you haven’t yet. Then mention ${agentName} with a short note on what you work on.`
                 : `Add the Switch app to a Teams chat or channel and send this there. Then mention ${agentName} with a short note on what you work on.`
             }
-            footer={<InviteCommand platform={step.bridge.type} agentName={agentName} />}
+            footer={
+              <div className="flex flex-col items-start gap-3">
+                <BridgeChoice
+                  platform={step.bridge.type}
+                  bridges={connectedBridges}
+                  chosenId={step.bridge.id}
+                  disabled={false}
+                  onChoose={setChosenBridgeId}
+                />
+                <InviteCommand platform={step.bridge.type} agentName={agentName} />
+              </div>
+            }
           />
         </>
       )}

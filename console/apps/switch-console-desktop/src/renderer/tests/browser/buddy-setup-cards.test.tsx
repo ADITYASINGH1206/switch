@@ -442,6 +442,40 @@ describe('switch-buddy setup cards', () => {
     expect(handoffCalls()).toEqual([expect.objectContaining({ bridgeId: 'b-2' })]);
   });
 
+  for (const { platform, unit, a, b } of [
+    { platform: 'slack', unit: 'workspace', a: acme, b: globex },
+    {
+      platform: 'discord',
+      unit: 'server',
+      a: discord,
+      b: bridge('b-6', 'discord', 'Globex Discord'),
+    },
+  ]) {
+    it(`(h) ${platform}: one linked and one not, both are choices, each in its own state`, async () => {
+      listBridges.mockResolvedValue([a, b]);
+      listMyIdentities.mockResolvedValue([linked(a.id)]);
+      const el = await render();
+
+      expect(el.textContent).toContain(`Which ${unit}?`);
+      expect(button(el, a.displayName).getAttribute('aria-pressed')).toBe('true');
+      expect(findButton(el, b.displayName)).toBeDefined();
+      expect(findButton(el, 'Create channel and continue')).toBeDefined();
+
+      await click(el, b.displayName);
+      expect(button(el, b.displayName).getAttribute('aria-pressed')).toBe('true');
+      expect(el.textContent).toContain(`So I recognise you in ${b.displayName}.`);
+      expect(findButton(el, 'Create channel and continue')).toBeUndefined();
+      await shot(el, `h3-mixed-${platform}`);
+      await click(el, 'Link account');
+      expect(shown.at(-1)).toMatchObject({ id: 'claimIdentityModal', args: { bridgeId: b.id } });
+
+      await click(el, a.displayName);
+      expect(findButton(el, 'Link account')).toBeUndefined();
+      await click(el, 'Create channel and continue');
+      expect(handoffCalls()).toEqual([expect.objectContaining({ bridgeId: a.id })]);
+    });
+  }
+
   it('(i) invite or post failure: Try again, then done', async () => {
     listBridges.mockResolvedValue([acme]);
     listMyIdentities.mockResolvedValue([linked('b-1')]);

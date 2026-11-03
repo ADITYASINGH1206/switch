@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatSummary } from '@shared/core/chats/chats';
 import type { LinkedIdentity, RemoteBridge } from '@shared/core/switch-servers/switch-servers';
 import {
+  buddyBridge,
   buddyPlatform,
   buddyResumeBridges,
   buddySetupCardsEnabled,
@@ -32,6 +33,7 @@ const base = {
   bridges: [],
   identities: [],
   resumes: {},
+  chosenBridgeId: null,
   failed: false,
 };
 
@@ -154,6 +156,74 @@ describe('buddySetupStep', () => {
         resumes: { 'b-1': handedOff, 'b-5': null },
       })
     ).toEqual({ kind: 'create', bridge: discord });
+  });
+});
+
+describe('a platform with one connection linked and another not', () => {
+  const mixed = { ...base, bridges: [slack, slack2], identities: [linked] };
+
+  it('defaults to the linked one and offers to create there', () => {
+    expect(buddySetupStep({ ...mixed, resumes: { 'b-1': null } })).toEqual({
+      kind: 'create',
+      bridge: slack,
+    });
+  });
+
+  it('asks to link the unlinked one when it is chosen, and creates on the linked one when that is', () => {
+    expect(buddySetupStep({ ...mixed, resumes: { 'b-1': null }, chosenBridgeId: 'b-2' })).toEqual({
+      kind: 'link',
+      bridge: slack2,
+    });
+    expect(buddySetupStep({ ...mixed, resumes: { 'b-1': null }, chosenBridgeId: 'b-1' })).toEqual({
+      kind: 'create',
+      bridge: slack,
+    });
+  });
+
+  it('shows a hand-off made on one connection, and the other connection its own state when chosen', () => {
+    const both = { ...mixed, identities: [linked, linked2] };
+    expect(buddySetupStep({ ...both, resumes: { 'b-1': null, 'b-2': handedOff } })).toEqual({
+      kind: 'done',
+      chat: handedOff,
+    });
+    expect(
+      buddySetupStep({ ...both, resumes: { 'b-1': null, 'b-2': handedOff }, chosenBridgeId: 'b-1' })
+    ).toEqual({ kind: 'create', bridge: slack });
+    expect(buddySetupStep({ ...mixed, resumes: { 'b-1': handedOff } })).toEqual({
+      kind: 'done',
+      chat: handedOff,
+    });
+  });
+
+  it('guides Teams on the connection chosen, linked or not', () => {
+    const teams2 = { ...teams, id: 'b-6' } as RemoteBridge;
+    const teamsMixed = {
+      ...base,
+      platform: 'teams' as const,
+      bridges: [teams2, teams],
+      identities: [{ bridgeId: 'b-3' } as LinkedIdentity],
+    };
+    expect(buddySetupStep(teamsMixed)).toEqual({ kind: 'guide', bridge: teams });
+    expect(buddySetupStep({ ...teamsMixed, chosenBridgeId: 'b-6' })).toEqual({
+      kind: 'link',
+      bridge: teams2,
+    });
+  });
+});
+
+describe('buddyBridge', () => {
+  it('is the one chosen, else a handed-off one, else a linked one, else the first connected', () => {
+    const bridges = [slack, slack2, discord];
+    expect(buddyBridge('slack', bridges, [], {}, 'b-2')).toBe(slack2);
+    expect(buddyBridge('slack', bridges, [], {}, 'b-5')).toBe(slack);
+    expect(buddyBridge('slack', bridges, [linked2], {}, null)).toBe(slack2);
+    expect(buddyBridge('slack', bridges, [linked, linked2], { 'b-2': handedOff }, null)).toBe(
+      slack2
+    );
+    expect(buddyBridge('slack', [{ ...slack, status: 'error' }, slack2], [linked], {}, null)).toBe(
+      slack2
+    );
+    expect(buddyBridge('teams', bridges, [], {}, null)).toBeUndefined();
   });
 });
 
