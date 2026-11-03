@@ -22,7 +22,6 @@ const STATE_TONE: Record<DeviceRow['state'], StatusTone> = {
   online: 'success',
   offline: 'neutral',
   unknown: 'neutral',
-  revoked: 'danger',
 };
 
 /**

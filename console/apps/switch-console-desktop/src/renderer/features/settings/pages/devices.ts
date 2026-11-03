@@ -7,7 +7,10 @@ export type DeviceRow = {
   name: string;
   /** What tells it apart under its name: this computer, or the SSH host it is. */
   detail: string | null;
-  state: OwnedMachine['state'];
+  /** Never `revoked`: a revoked machine is left out. */
+  state: Exclude<OwnedMachine['state'], 'revoked'>;
+  /** This computer, which the table lists first. */
+  thisComputer: boolean;
   type: DeviceType;
   agents: number;
   platform: string | null;
@@ -45,14 +48,15 @@ export function deviceRows(
             : local?.kind === 'ssh-host'
               ? local.sshHost
               : null,
-        state: machine.state,
+        state: machine.state as DeviceRow['state'],
+        thisComputer: local?.kind === 'this-computer',
         type: machine.cloud ? 'cloud' : local?.kind === 'ssh-host' ? 'ssh' : 'computer',
         agents: counts.get(machine.id) ?? 0,
         platform: machine.os ? (PLATFORM_NAMES[machine.os] ?? machine.os) : null,
       };
     })
     .sort((a, b) => {
-      const here = Number(b.detail === 'This computer') - Number(a.detail === 'This computer');
+      const here = Number(b.thisComputer) - Number(a.thisComputer);
       return here !== 0 ? here : a.name.localeCompare(b.name);
     });
 }
