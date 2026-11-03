@@ -18,6 +18,9 @@ const getRoomDetail = vi.hoisted(() => vi.fn());
 const createChat = vi.hoisted(() => vi.fn());
 const openRoomChannel = vi.hoisted(() => vi.fn());
 const shown = vi.hoisted(() => [] as { id: string; args: { onClosed?: () => void } }[]);
+const listBridgeTypes = vi.hoisted(() => vi.fn());
+const listMessagingApps = vi.hoisted(() => vi.fn());
+const administersWorkspaceInScope = vi.hoisted(() => vi.fn());
 const timeline = vi.hoisted(() => ({
   messages: [] as { sender: { kind: string }; body: string }[],
   pending: [] as { body: string }[],
@@ -34,7 +37,13 @@ vi.hoisted(() => {
 
 vi.mock('@renderer/lib/ipc', () => ({
   rpc: {
-    workspaces: { listBridges, listMyIdentities, getRoomDetail },
+    workspaces: {
+      listBridges,
+      listMyIdentities,
+      getRoomDetail,
+      listBridgeTypes,
+      listMessagingApps,
+    },
     chats: { create: createChat },
     switchRooms: { openRoomChannel },
   },
@@ -56,10 +65,19 @@ vi.mock('@renderer/features/chats/components/chat-composer', () => ({
   focusComposerWhenOpened: () => {},
 }));
 vi.mock('@renderer/features/switch-servers/switch-servers-store', () => ({
-  switchServersStore: { statusFor: () => ({ user: { name: 'Ada Lovelace', email: null } }) },
+  switchServersStore: {
+    statusFor: () => ({ user: { name: 'Ada Lovelace', email: null } }),
+    activeServerId: 'srv-1',
+    servers: [{ id: 'srv-1', name: 'Dev' }],
+  },
+}));
+vi.mock('@renderer/features/switch-servers/workspace-admin', () => ({
+  administersWorkspaceInScope,
 }));
 
 import { BuddySetupCards } from '@renderer/features/switch-buddy/buddy-setup-cards';
+import { ConnectMessagingAppModal } from '@renderer/features/switch-servers/ConnectMessagingAppModal';
+import { Dialog } from '@renderer/lib/ui/dialog';
 import '@renderer/index.css';
 
 /** Relative to this file; it must stay inside the workspace for Vite to write it. */
@@ -127,6 +145,13 @@ beforeEach(async () => {
     return slackChat(params.bridgeId!);
   });
   openRoomChannel.mockReset().mockResolvedValue(undefined);
+  listBridgeTypes
+    .mockReset()
+    .mockResolvedValue([
+      { key: 'slack', fields: [], channelCreationSupported: true, directorySearchSupported: true },
+    ]);
+  listMessagingApps.mockReset().mockResolvedValue({ installable: ['slack'], claimable: [] });
+  administersWorkspaceInScope.mockReset().mockReturnValue(true);
   shown.length = 0;
   timeline.messages = [];
   timeline.pending = [];
@@ -244,20 +269,34 @@ describe('switch-buddy setup cards', () => {
     await shot(el, 'c-linking-skipped');
   });
 
-  it('(d) non-admin: the card offers Connect; the connect dialog explains admin rights', async () => {
-    // Who may connect an app is decided inside ConnectMessagingAppModal, so
-    // the card itself shows the same connect card and, once it closes, the note.
-    const el = await render();
-    await click(el, 'Channels & DMs');
-    await click(el, 'Connect Slack');
-    expect(shown[0].id).toBe('connectMessagingAppModal');
+  it('(d) non-admin: the connect dialog explains admin rights are needed', async () => {
+    administersWorkspaceInScope.mockReturnValue(false);
+    const modalContainer = document.createElement('div');
+    document.body.appendChild(modalContainer);
+    const modalRoot = createRoot(modalContainer);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
 
-    await act(async () => shown[0].args.onClosed!());
+    await act(async () =>
+      modalRoot.render(
+        <QueryClientProvider client={client}>
+          <Dialog open onOpenChange={() => {}}>
+            <ConnectMessagingAppModal onSuccess={() => {}} onClose={() => {}} onClosed={() => {}} />
+          </Dialog>
+        </QueryClientProvider>
+      )
+    );
     await settle();
 
-    expect(el.textContent).toContain('Slack isn’t connected yet. Try again when you’re ready.');
-    expect(findButton(el, 'Connect Slack')).toBeDefined();
-    await shot(el, 'd-non-admin-connect');
+    const dialog = document.body;
+    expect(dialog.textContent).toContain('Connect a messaging app to Dev');
+    expect(dialog.textContent).toContain(
+      'Connecting a messaging app requires an owner or admin of this workspace. You are a member without admin rights, so the server would reject this.'
+    );
+    const dialogEl = document.querySelector('[role="dialog"]') || modalContainer;
+    await shot(dialogEl as HTMLElement, 'd-non-admin-connect');
+
+    await act(async () => modalRoot.unmount());
+    modalContainer.remove();
   });
 
   it('(e) channel creation disabled: says why, and offers Try again', async () => {
